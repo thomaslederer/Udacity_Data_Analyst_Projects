@@ -1,0 +1,1690 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+#2016 Presidential Campaign Contributions: Exploratory Data Analysis
+
+========================================================
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+
+#Load necessary packages
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(gridExtra)
+library(knitr)
+
+```
+
+```{r}
+# Load the Data, note: cannot break up filename line of code
+contributions <- 
+  read.csv(file =
+  "/Users/ThomasLederer/Documents/Nanodegree Data Science/Lesson 4/Assignment/P00000001-NY.csv",
+  stringsAsFactors = FALSE, row.names = NULL)
+
+#Row names set to NULL: This is neccessary because there is a header and the 
+#first row contains one fewer field than the number of columns, R otherwise 
+#tries to use the first column as row names.
+
+# However, the first column is then given the header "row.names" and the other 
+#column headers are shifted one to the right. To fix this, shift column names 
+#over to the left and delete the last (empty) column on the right.
+
+colnames(contributions)[1:18] <- colnames(contributions)[2:19]
+contributions <- contributions [,-19]
+
+# Columns suitable for factoring:
+contributions$cand_id <- factor(contributions$cand_id)
+contributions$cand_nm <- factor (contributions$cand_nm)
+contributions$cityt <- factor (contributions$contbr_city)
+contributions$contbr_zip <- factor (contributions$contbr_zip)
+
+#Change date values from strings to date classes:
+contributions$contb_receipt_dt <- as.Date(contributions$contb_receipt_dt, 
+                                          format = '%d-%b-%y')
+
+
+#Delete the unitemized receipts:
+
+# Included in this dataset is over 80million dollars of unitemized receips to 
+# the Hilary Clinton campaign. Unitemized contributions are those under $200/per 
+# person which are thereby exempt from the requirement to disclose information 
+# about the source of such funds. In this case, there are 23 unitemized 
+# contributions to the Clinton campaign in very large amounts/in excess of 
+# $900,000. There is no further information provided about the contributors 
+# behind these funds. 
+
+# There are, however, several good reasons to conclude that the source of these 
+# funds is from outside of New York State, and that therefore these contributions
+# can be removed from the data set:
+
+# (i) There are already many examples in the data of total individual New York 
+# contributions under $200 made to the Clinton campaign. These "small donations" 
+#are itemized in the same way as donations over $200.
+
+#(ii) As we will see, the total amount of these small donations as a percentage
+# of the total contributions are relatively consistent with the other campaigns.
+
+# (iii) The zipcode listed on the unitemized contributions is also the zipcode 
+# for the PO Box of the Clinton Campaign. 
+
+# (iv) The total unitemized contributions across all states (for a greater time 
+# period) is only slightly higher than the unitemized receips given in the NYS 
+# data set. Specifically, total small/unitemized contributions are 105,552,584. 
+# Total "NYS" small/unitemized contributions included in the datset are 
+# 80,675,920. It seems very unlikley such a large percent of the unitemized 
+# contributions could come from NYS state alone. 
+# Source: https://www.opensecrets.org/pres16/candidate?id=N00000019
+
+
+# For these reasons, the batched deposits of unitemized receipts should be 
+# deleted from the data.
+contributions <- contributions[!contributions$contb_receipt_amt>900000,]
+
+
+
+```
+
+This analysis explores contributions to the 2016 United States Presidential Campaign from people residing in New York State. The source of the dataset is the Federal Election Commission. Information on each contribution includes, among other values, contributor name, city and postcode of residence, dollar amount contributed, candidate/campaign contributed to, and date of contribution.
+
+The structure of the dataset is represented below. Notice the factored columns for "cand_nm", "candi_id", "contb_receipt_dt" and "cityt." Since these data columns return a specific and much smaller set of possible values, these variables, along with "contb_receipt_amt" are a good starting point for EDA. 
+
+ 
+```{r}
+
+str (contributions)
+
+
+```
+
+
+
+
+# Univariate Plots Section
+
+
+```{r, Univariate_Plots }
+
+#Code to determine percent of negative values in dataset:
+#nrow(contributions[contributions$contb_receipt_amt <0,])/nrow(contributions)
+
+#### Note: Code used to provide expositary statistics on graphs is included in comments for reviewer to reproduce results. ####
+
+boxplot(contributions$contb_receipt_amt, ylab ="Contribution amount")
+
+
+
+
+```
+
+
+```{r}
+
+
+
+qplot(x=contb_receipt_amt, data = contributions, geom = "freqpoly")
+
+
+```
+
+A box plot and frequency polygon of contribution amount in dollars display large number of outliers in the dataset on both sides of zero. About 1.3% of the dataset rows are negative values. 
+
+
+
+```{r}
+
+boxplot(contributions$contb_receipt_amt, ylim = c(-200,500), ylab 
+        ="Contribution amount")
+
+summary (contributions$contb_receipt_amt)
+
+
+
+```
+Zooming in on boxplot model, we can see the middle quartiles of the contribution receipt amount are 15 to 100 USD.  
+
+```{r}
+qplot(x=contb_receipt_amt, data = contributions, geom = "freqpoly", xlim = 
+        c(0,1050))
+      
+```
+
+Zooming in on the frequency polygon shows the overwhelming majority of donations are relatively small/clustered around near the x axis. Also noticeable here are some larger typical increments in which contributions are made at 250, 500, and $1,000. 
+
+
+```{r}
+qplot(x=contb_receipt_amt, data = contributions, binwidth = 25, xlim = c(0,500))
+
+```
+
+
+
+```{r}
+qplot(x=contb_receipt_amt, data = contributions, xlim = c(0,500), binwidth = 1)
+
+```
+
+
+However, the most popular amounts to donate are 25, 50, $100. The second graph above shows the vast majority of contributions are reoccurring at set intervals. 
+
+
+```{r}
+
+
+#Create new column for month of contribution
+contributions$contb_receipt_month <- as.Date(cut(contributions$contb_receipt_dt,
+                                                 breaks = "month"))
+
+#Month intervals mapped onto histogram as breaks
+#Source: https://www.r-bloggers.com/plot-weekly-or-monthly-totals-in-r/
+
+qplot(x=contb_receipt_month, data = contributions) +
+  scale_x_date(date_breaks = "1 month", date_labels="%m", 
+               limits =c(as.Date('2015-01-01', format = '%Y-%m-%d')
+                         ,as.Date('2017-01-01', format = '%Y-%m-%d')))
+
+  
+```
+
+Above I split the date of the contributions into months and graphed the result from the beginning of 2015 on. At first it appears (counter-intuitively) that contributions dipped towards the end of the campaign. However, we should remember that the election was held on Nov 7th 2016. Occurring only across just 7 days, the number of contributions in November is proportionally higher than any other month.
+
+
+```{r}
+
+#Create new column to store candidate classes
+contributions$candidate_class <- "Other"
+
+
+# Update value for top four candidates by number of contributions:
+contributions[contributions$cand_nm == "Sanders, Bernard", 
+              "candidate_class"] <- "Sanders"
+
+contributions[contributions$cand_nm == "Clinton, Hillary Rodham", 
+              "candidate_class"] <- "Clinton"
+
+
+contributions[contributions$cand_nm == "Trump, Donald J.",
+              "candidate_class"] <- "Trump"
+
+
+contributions[contributions$cand_nm == "Cruz, Rafael Edward 'Ted'", 
+              "candidate_class"] <- "Cruz"
+
+
+#Change limit for scientific notaion on axis
+options(scipen=5)
+
+qplot (x=candidate_class, data = contributions)
+
+#Over 61% of donations to Hilary Clinton:
+#nrow(contributions[contributions$candidate_class =="Clinton, Hillary Rodham",]) 
+#/ nrow(contributions)
+     
+
+#Over 88% of donation to either Hilary CLinton or Bernie Sanders:
+#nrow(contributions[contributions$candidate_class =="Clinton, Hillary Rodham"| 
+#contributions$candidate_class == "Sanders, Bernard",]) / nrow(contributions)
+
+
+
+
+
+```
+
+We can see here most contributions were made to just three or four candidates
+Further, The majority of these contributions, went to Democratic Presidential Candidates - Clinton and Sanders. 
+
+
+```{r}
+
+#Create table for top 10 cities in contriutions
+sort(table(contributions$contbr_city), decreasing = TRUE)[1:10]
+
+#Create new column to store city classes.
+contributions$city_class <- "Other"
+
+Queens <- list (
+"ASTORIA",
+"FOREST HILLS",
+"LONG ISLAND CITY",
+"FLUSHING",
+"JAMAICA",
+"WOODSIDE",
+"JACKSON HEIGHTS",
+"RIDGEWOOD",
+"BAYSIDE",
+"REGO PARK",
+"SUNNYSIDE",
+"EAST ELMHURST",
+"ELMHURST",  
+"KEW GARDENS",
+"QUEENS VILLAGE", 
+"OZONE PARK",
+"MIDDLE VILLAGE",  
+"HOWARD BEACH", 
+"FAR ROCKAWAY",
+"ROCKAWAY PARK", 
+"ROCKAWAY BEACH",
+"JACKSON HTS",
+"QUEENS", 
+"QUEENS VLG")
+
+
+New_York <- list("NEW YORK", "NY", "NYC", "NEW YORK CITY")
+
+#Update for New York and Brooklyn. List of New York inconsistencies in 
+#list above
+contributions[contributions$contbr_city %in% New_York,"city_class"] <- 
+  "New York" 
+contributions[contributions$contbr_city == "BROOKLYN" | 
+                contributions$contbr_city =="BROOKLYN HGTS", "city_class"] <- 
+  "Brooklyn" 
+
+#The Bronx:
+contributions[contributions$contbr_city == "BRONX", "city_class"] <- "Bronx" 
+
+#Staten Island:
+contributions[contributions$contbr_city == "STATEN ISLAND", "city_class"] <- 
+  "Staten Island" 
+
+#Queens: List of cities within Queens given in list below
+contributions[contributions$contbr_city %in% Queens, "city_class"] <- "Queens" 
+
+# All boroughs in NYC account for almost 53% of the total number 
+#of contributions
+#nrow(contributions[contributions$city_class == "Other",])/nrow(contributions)
+
+# Manhattn accounts for almosr 32% total number contributions
+#nrow(contributions[contributions$city_class == "New York",])
+#/nrow(contributions)
+
+
+qplot (x=contributions$city_class, data = contributions)
+
+
+
+```
+
+Once classed, New York City Boroughs account for 4 of the top 5, and 5 of the top 6 cities when sorted by the number of contributions. The NYC burrough with the least number of contributions - Staten Island is 6th, after Rochester (Rochester is included in the "Other"" category in the graph above.) 
+
+New York City including all boroughs accounts for about 53% of total number of contributions. Manhattan, which has the most contributions, accounts for 32% by itself.
+
+
+```{r}
+
+
+#There were 119,407 total unique contributors by name. (Versus almost 65,000 
+#total contributions). Not all these different people with the same name, 
+#Some people must have donated more than once!
+#length (unique(contributions$contbr_nm))
+
+
+
+#Create dataframe for number of times contributors name occurs
+n_occur <- data.frame(table(contributions$contbr_nm))
+
+# Create variable for total number of unique names:
+unique_n <- nrow(n_occur)
+
+#summary (n_occur)
+#Mean of number of contributions per person is slightly less than 5.44. 
+#The medium is slighlty less than 2. I say slightly less because some 
+#contributions will be from different people with the same name. (To get a 
+#unique indentifier, we need to look at more than one variable.)
+
+
+#(nrow (n_occur[n_occur$Freq>1,]))/unique_n
+#Almost 58% of contributors contributed more than once!
+
+
+#(nrow (n_occur[n_occur$Freq>=10,]))/(unique_n) 
+#Almost 15% of contributors contributed 10 or more times
+
+
+qplot(x=n_occur$Freq, data = n_occur, binwidth = 1) +
+  scale_x_continuous(limits = c(0,16),breaks = seq(0,16,1))
+
+```
+
+The graph above is a histogram showing recurrence of contributor names throughout the data. Although some of these recurrences will be from different people with the same name, the observations are largely from repeated contributions by the same person.
+
+We will need to take these recurring contributions into consideration when calculating average contribution amounts. It now seems to make sense to group contributions by contributor and sum these amounts to get total contributions per individual. 
+
+
+
+# Univariate Analysis
+
+
+
+### What is the structure of your dataset?
+
+The original data set consisted of 649,460 observations/contributions across 18 variables/columns. After import, I have removed 23 (invalid) contributions/rows, and also added 4 columns to help classify and summarize the data.
+There are 25 levels of candidates, 2,327 contributor cities, and the vast majority of the contributions are dated between April 2016 to November 2016. 
+There are a few other distinguishing structural characteristics:
+
+(1) Dominant categories: Contributions to Hilary Clinton comprise over 61% of the total number of contributions. Contributions to either Clinton or Bernie Sanders comprise over 88% of data. Also, 53% of contributions came from New York City boroughs.
+
+(2) Outliers: The average contribution is 140.10, yet the median is only 27, even the 3rd quadrant is just $100. This large difference between mean and median is due to the large pull of outliers well outside the normal range of the data. 
+
+(3) Negative values: Negative contributions represent 1.3% of the total data. These values are refunds. There are however many negative outliers in the dataset which are further distort measures of central tendency mentioned above.
+
+(4) Reoccurring values: There are many reoccurring names in the data representing people making more than one donation. These repeated donations from the same individual may need to be grouped together to get a clear idea of the average contribution. Finally, there are also certain intervals which are very popular contribution amounts.
+
+
+### What is/are the main feature(s) of interest in your dataset?
+
+I am mainly interested in how contribution data varies across candidates. Candidate name is the main feature of the dataset and should be treated as the independent variable. I hope to extract some trends within contributions for each candidate. I expect there is a certain "type" of contribution/contributor more common to certain candidates.
+
+### What other features in the dataset do you think will help support your  investigation into your feature(s) of interest?
+
+Contribution amounts, number of unique contributors, contribution averages per person, and contributions per location (city) are likely to vary across candidates. The challenge will be to extract some correlations between these variables and the candidates.
+
+### Did you create any new variables from existing variables in the dataset?
+
+I created summary columns which help to classify the number of levels to more manageable groupings. "Contb_receipt_month"" groups the date of contribution into months, "candidate_class"" parses the contributions into the 4 most popular candidates, city_class distinguishes the boroughs of New York from other cities.  
+
+
+### Of the features you investigated, were there any unusual distributions? 
+Data is very unevenly distributed in dollar amounts contributed, number of contributions per city, and number of contributions per contributor. 
+
+###Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+I factored variables and coerced into date_type where appropriate. I also deleted batched contributions from the data as I determined these contributions likely originate from outside of New York State. 
+
+
+# Bivariate Plots Section
+
+
+```{r}
+
+#Total contribution dollars per candidate:
+
+#Group dataset by candidate name and compute:
+group_receipts_by_candidate <- group_by(contributions, cand_nm)
+stats_receipts_by_candidate <- summarize(group_receipts_by_candidate,
+    total_contributions = sum (contb_receipt_amt),
+    avg_contrib = mean(contb_receipt_amt),
+    median_contrib = median(contb_receipt_amt))
+
+
+#Clinton accounts for almost 71% of total dollars received: 
+#stats_receipts_by_candidate[stats_receipts_by_candidate$cand_nm=="Clinton, 
+#Hillary Rodham", "total_contributions"]/sum(stats_receipts_by_candidate$
+#total_contributions)
+
+# Trump accounts for only 6% of total dollars:
+#stats_receipts_by_candidate[stats_receipts_by_candidate$cand_nm==
+#"Trump, Donald J.", "total_contributions"]/sum(stats_receipts_by_candidate
+#$total_contributions)
+
+
+#Graph of total amounts per candidate
+ggplot(aes(x=cand_nm, y=total_contributions), 
+       data = stats_receipts_by_candidate[stats_receipts_by_candidate$cand_nm 
+      == "Clinton, Hillary Rodham" |stats_receipts_by_candidate$cand_nm 
+      == "Sanders, Bernard" |stats_receipts_by_candidate$cand_nm 
+      == "Bush, Jeb" |stats_receipts_by_candidate$cand_nm
+      == "Cruz, Rafael Edward 'Ted'"|stats_receipts_by_candidate$cand_nm 
+      == "Bush, Jeb" |stats_receipts_by_candidate$cand_nm 
+      == "Rubio, Marco"|stats_receipts_by_candidate$cand_nm 
+      == "Trump, Donald J.",]) +
+  geom_col() +
+  coord_flip()
+
+
+
+```
+
+Grouped by total dollar receipts, contributions to Clinton surpass those of other candidates by an even wider margin than the number of contribution taken alone. Whereas the Clinton campaign accounted for 61% of the total number of donations, they account for almost 71% of total contributions in dollars. This must be because the average contribution to Clinton is larger than most other candidates. 
+
+
+
+```{r}
+# Total dollar amount by city
+
+#Group dataset by city name and compute:
+group_receipts_by_city <- group_by(contributions, cityt)
+stats_receipts_by_city<- summarise(group_receipts_by_city,
+                    total_contributions = sum (contb_receipt_amt))
+
+
+#Manahattan alone accounts for over 50% of the total money contributed: 
+#stats_receipts_by_city[stats_receipts_by_city$cityt=="NEW YORK", "total_contributions"]/sum(stats_receipts_by_city$total_contributions)
+
+
+#Select top ten cities that contributed the most
+stats_receipts_by_city <- arrange(stats_receipts_by_city, 
+                                  desc(total_contributions))
+stats_receipts_by_top_city <- arrange(stats_receipts_by_city[1:10,],
+                                      total_contributions)
+
+ggplot(aes(x=cityt, y=total_contributions), 
+       data = stats_receipts_by_top_city) +
+  geom_col() +
+  theme (axis.text.x = element_text(angle=65))
+  
+
+```
+
+Likewise, whereas New York City (in this case, including only Manhattan) represents 32% the total number of contributions, the city also accounts for over 50% of the total money contributed. Contributions from Manhattan, like contribution to Hilary Clinton, must be higher than average.
+
+This leads to the question: how much of these larger contributions from Manhattan are also contributions to the Hilary Clinton campaign? I suspect a large majority. 
+
+
+
+```{r}
+
+# Total dollar amount by city class
+
+#Group dataset by city class and compute:
+group_receipts_by_city_class <- group_by(contributions, city_class)
+stats_receipts_by_city_class<- summarise(group_receipts_by_city_class,
+                    total_contributions = sum (contb_receipt_amt))
+
+
+#NYC boroughs together accounts for over 65% of the total money contributed: 
+#1 - (stats_receipts_by_city_class[stats_receipts_by_city_class=="Other", "total_contributions"]/sum(stats_receipts_by_city_class$total_contributions))
+
+
+
+ggplot(aes(x=city_class, y=total_contributions), 
+       data = stats_receipts_by_city_class) +
+  geom_col()
+
+
+```
+
+NYC boroughs together accounts for over 65% of the total money contributed, versus 53% total number of contributions. 
+
+How popular were the different candidates across the burroughts? Were some candidates more popular outside of all of NYC. 
+
+
+
+```{r}
+#Contributions receipts per person:
+
+
+#To group contributions by contributor/person, we need to use zipcode as well as name to create a unique identifier. Although there is some risk of more than one contributor in same zipcode with the same name, the probability of this occuring is less than using the criteria of name alone. Introducing a third variable to create a unique ID (for example occupation) is risky because some contributors may list their occupation slighlty differently on different contributions. In the later case, we could then be counting contributions that were actually made by the same person as from two different people.
+
+#Create groupings of contribution receipts by contributor:
+group_receipts_by_person <- group_by(contributions, contbr_nm, 
+                                     contbr_zip, cand_nm,city_class)
+
+
+stats_receipts_by_person <- summarise(group_receipts_by_person,
+    contributor_sum = sum (contb_receipt_amt),
+    contributor_mean = mean (contb_receipt_amt),
+    contributor_median = median(contb_receipt_amt),
+    n = n())
+
+summary(stats_receipts_by_person$contributor_sum)
+# Mean total contribution was 714.8
+# Median $250
+
+qplot(x=contributor_sum, data = stats_receipts_by_person, 
+      binwidth = 200, xlim = c(0,6000))
+
+```
+
+The histogram above shows contributor sum on the x axis. Contributor sum is a variable created from two other variables: contribution amount ("contb_receipt_amt" column) and contributor name ("contbr_nm" column). It shows total contributions per person.
+
+Once a contributors total contributions are summed as individual contributor sum, the average contribution amount increases from 140.10 to 714.80, and the median contribution increases from 27 to $250. The previously observed large difference between the mean and medium in single contribution is carried over into contributor sums. This difference once again reflects the positive skew of the graph's distribution. 
+
+
+```{r}
+
+boxplot(stats_receipts_by_person$contributor_sum, 
+        ylab ="Total Indiviual Contribution Amount")
+summary (stats_receipts_by_person$contributor_sum)
+
+
+```
+
+A box plot showing the total contribution amount per person, closesly resembles the box plot for each individual contribution in the Univariate section above. We again see a large number of outliers either side of zero. The lone point at approximately 30,000 represents George Pataki's contributions to his own campaign. 
+
+
+```{r}
+relevant = c("Clinton, Hillary Rodham","Trump, Donald J.", "Bush, Jeb", "Cruz,
+             Rafael Edward 'Ted'", "Rubio, Marco","Sanders, Bernard")
+
+
+ggplot(aes(y = contributor_sum, x = cand_nm), 
+       data = stats_receipts_by_person[stats_receipts_by_person$cand_nm 
+          %in% relevant,]) +
+        geom_boxplot() +
+ coord_cartesian(ylim = 0:3000)
+ 
+
+
+
+```
+
+
+```{r}
+
+ggplot(aes(y = contributor_sum, x = city_class), 
+       data = stats_receipts_by_person) +
+        geom_boxplot() +
+   coord_cartesian(ylim = 0:3000)
+
+
+
+```
+
+Plotting individual contribution sum over variables such as city or candidate, however, there are some large differences in mean contribution and quantiles. There certainly seems to be different "types" of contributor across candidate and location.
+
+
+
+
+```{r}
+
+#Number of type of contributors per candidate
+
+#Use contributor name and zip for UID, include addition fields to group by
+#candidates, city, and city class:
+groupreceipts_by_person_by_candidate_and_city <-
+  group_by(contributions, contbr_nm, contbr_zip, cand_nm, cityt, city_class)
+
+
+#Recalculate total contributions per person:
+statsreceipts_by_person_by_candidate_and_city <- 
+  summarise(groupreceipts_by_person_by_candidate_and_city,
+    contributor_sum = sum (contb_receipt_amt),
+    contributor_mean = mean (contb_receipt_amt),
+    contributor_median = median(contb_receipt_amt),
+    n = n())
+
+
+#Add contributor_type field:
+contributor_type <- statsreceipts_by_person_by_candidate_and_city
+
+#Classify by total contribution amount:
+contributor_type$type <- "Other"
+contributor_type[contributor_type$contributor_sum > 200,"type"] <- "Large" 
+contributor_type[contributor_type$contributor_sum <= 200
+                 & contributor_type$contributor_sum>1, "type"] <- "Small"
+
+#Get totals for each contributor type for each candidate:
+group_candidate_by_contrb_type <- group_by(contributor_type, cand_nm, type)
+stats_candidate_by_contrb_type <- summarise(group_candidate_by_contrb_type,
+      total_contrib = sum(contributor_sum),
+      n = n())
+
+
+#Set Classes for candidates to summarize data:
+stats_candidate_by_contrb_type$candidate_class <- "Other"
+
+stats_candidate_by_contrb_type[stats_candidate_by_contrb_type$cand_nm 
+            == "Clinton, Hillary Rodham", "candidate_class"] <- "Clinton"
+
+stats_candidate_by_contrb_type[stats_candidate_by_contrb_type$cand_nm 
+            == "Trump, Donald J.", "candidate_class"] <- "Trump"
+
+stats_candidate_by_contrb_type[stats_candidate_by_contrb_type$cand_nm
+            == "Bush, Jeb", "candidate_class"] <- "Bush"
+
+stats_candidate_by_contrb_type[stats_candidate_by_contrb_type$cand_nm 
+            == "Cruz, Rafael Edward 'Ted'","candidate_class"] <- "Cruz"
+
+stats_candidate_by_contrb_type[stats_candidate_by_contrb_type$cand_nm 
+            == "Rubio, Marco", "candidate_class"] <- "Marco"
+
+stats_candidate_by_contrb_type[stats_candidate_by_contrb_type$cand_nm
+            == "Sanders, Bernard", "candidate_class"] <- "Sanders"
+
+
+ggplot(aes(x=candidate_class, y = n, fill = type), 
+       data = stats_candidate_by_contrb_type) +
+  ylab("Number of Contributors") +
+  geom_col()
+
+
+
+```
+
+The graph above shows the proportion of small contributors (total contributions of less than or equal to $200) to total contributors for the five most popular candidates. We can see the Trump campaign had the largest percentage of small contributors. 
+
+Since we have seen some evidence so far that people living in NYC boroughs tend to contribute more, this graph also seems to also suggest more of Trump contributors may live outside NYC boroughs. 
+
+Note: the other category denotes contributors who received refunds on their contribution. 
+
+
+```{r}
+
+ggplot(aes(x=candidate_class, y = total_contrib, fill = type), 
+       data = stats_candidate_by_contrb_type) +
+  geom_col()
+
+
+```
+
+However, when we observe contributor type by total dollars contributed, a very different graph emerges. Now it's clear that small contributions still make up a very small fraction of total dollars across all candidates. 
+
+This largely explains why the Clinton campaign raised so much more money than other candidates - a much higher percentage of her contributors were large donors. Incidentally, it also suggests that relying on a small contributor base is an ineffective fundraising strategy. 
+
+
+
+
+
+
+```{r}
+
+
+
+
+
+
+
+```
+
+
+
+```{r}
+#Mean and medium contributions per person per candidate
+
+group_avgs_by_contributor_by_candidate <- 
+  group_by (statsreceipts_by_person_by_candidate_and_city, cand_nm)
+
+stats_avgs_by_contributor_by_candidate <- 
+  summarise(group_avgs_by_contributor_by_candidate,
+        mean_contri_per_person = mean (contributor_sum),
+        median_contri_per_person = median(contributor_sum))
+
+wideavgs_by_contributor_by_candidate <- 
+  melt(stats_avgs_by_contributor_by_candidate, id.vars = c("cand_nm"))
+
+relevant = c("Clinton, Hillary Rodham","Trump, Donald J.", "Bush, Jeb", "Cruz,
+             Rafael Edward 'Ted'", "Rubio, Marco","Sanders, Bernard")
+
+ggplot(aes(x=cand_nm, y = value, fill = variable), 
+       data = wideavgs_by_contributor_by_candidate
+       [wideavgs_by_contributor_by_candidate$cand_nm %in% relevant,]) + 
+  geom_col(position = "dodge") +
+  ylab("Average Contribution Amount") 
+
+
+```
+
+This graph formalizes the conclusions from the previous two. While the Clinton campaign did not have the highest average contribution per person, they received much more on average than her main political rivals - Trump and Sanders.  
+
+Is is interesting however that nationally, Trump and Sanders - the candidates with the smallest average contributions per person, far exceeded early expectations of winning the election. Perhaps a small avg contribution, while not here an effective fundraising strategy, is also indicative of a wider, broader, even more enthusiastic support base.
+
+
+```{r}
+#Average contributions by city type
+
+
+group_avgs_by_contributor_by_city_class <- 
+  group_by (statsreceipts_by_person_by_candidate_and_city, city_class)
+
+stats_avgs_by_contributor_by_city_class <-
+  summarise(group_avgs_by_contributor_by_city_class,
+        mean_contri_per_person = mean (contributor_sum),
+        median_contri_per_person = median(contributor_sum))
+
+wideavgs_by_contributor_by_city_class <- 
+  melt(stats_avgs_by_contributor_by_city_class, id.vars = c("city_class"))
+
+
+ggplot(aes(x=city_class, y = value, fill = variable), 
+       data = wideavgs_by_contributor_by_city_class) + 
+  ylab("Average Contribution Amount") +
+  geom_col(position = "dodge")
+
+
+```
+
+```{r}
+
+# Averages for top 10 cities:
+
+group_avgs_by_contributor_by_city <- 
+  group_by (statsreceipts_by_person_by_candidate_and_city, cityt)
+
+stats_avgs_by_contributor_by_city <-summarise(group_avgs_by_contributor_by_city,
+        mean_contri_per_person = mean (contributor_sum),
+        median_contri_per_person = median(contributor_sum),
+        total_contr = sum(contributor_sum))
+
+
+
+stats_avgs_by_contributor_by_city <- 
+  arrange(stats_avgs_by_contributor_by_city, desc(total_contr))
+stats_avgs_by_contributor_by_top_city <- 
+  stats_avgs_by_contributor_by_city[1:10,]
+
+stats_avgs_by_contributor_by_top_city <- 
+  subset(stats_avgs_by_contributor_by_top_city, select = - total_contr)
+
+
+widestats_avgs_by_contributor_by_top_city <- 
+  melt(stats_avgs_by_contributor_by_top_city, id.vars = c("cityt"))
+
+ggplot(aes(x=cityt, y = value, fill = variable), 
+       data = widestats_avgs_by_contributor_by_top_city) + 
+  geom_col(position = "dodge") +
+ theme (axis.text.x = element_text(angle=65)) +
+  ylab("Average Contribution Amount")
+
+
+
+
+
+```
+
+
+The two graphs above show that within the five NYC boroughs, Manhattan (here New York) is within a different class of contribution sizes. Interestingly, cities like Buffalo and Rochester look much more similar to the other boroughs than New York. In terms of contributor totals, New York is more comparable to cities like Larchmont and Scarsdale than it is the other boroughs. 
+
+Are there further correlations within a city between average total individual contribution and the popularity of certain candidates? Or are the larger average contributions we have seen for certain candidates more or less consistent regardless of where the contributors live? 
+
+
+
+```{r}
+
+# Create new factors for work date columns:
+contributions$contbr_employer <- factor (contributions$contbr_employer)
+contributions$contbr_occupation <- factor (contributions$contbr_occupation)
+
+
+# Remove stylistic inconsistencies in factors
+levels(contributions$contbr_employer)[
+  levels(contributions$contbr_employer)
+  =="SELF EMPLOYED"] <- "SELF-EMPLOYED"
+
+levels(contributions$contbr_employer)[
+  levels(contributions$contbr_employer)
+  =="SELF"] <- "SELF-EMPLOYED"
+
+# Group Contributions by employer
+group_receipts_by_person_employer <- group_by(contributions, contbr_employer)
+
+
+stats_receipts_by_person_employers <- 
+summarise(group_receipts_by_person_employer,
+    total_contr = sum (contb_receipt_amt),
+    n = n())
+
+stats_receipts_by_person_employers <- 
+  arrange(stats_receipts_by_person_employers, desc(total_contr))
+
+
+# Delete rowsnames "N/A", "INFORMATION REQUESTED", "NONE" 	
+# "INFORMATION REQUESTED PER BEST EFFORTS"
+stats_receipts_by_person_employers <- 
+  stats_receipts_by_person_employers[-c(2,4,6,8),]
+top_employers <- stats_receipts_by_person_employers[1:15,]
+
+
+ggplot(aes(x=contbr_employer, y=total_contr), data = top_employers) +
+  geom_col() +
+  coord_flip()
+```
+
+Beside donation size, employer and work related data might be useful in identifying contributor "types." For now, we can note the large number of contributors that are not associated with any specific company - the top two categories are "self-employed" and "retired."
+
+```{r}
+
+#Contribution amounts by month
+
+group_receipts_by_month <- group_by(contributions, contb_receipt_month)
+stat_receipts_by_month <- summarise(group_receipts_by_month, 
+      contribution_amt = sum(contb_receipt_amt))
+
+ggplot(aes(x=contb_receipt_month,y= contribution_amt), 
+       data = stat_receipts_by_month[stat_receipts_by_month$                                                                  contb_receipt_month>as.Date('2014-12-01',format = '%Y-%m-%d'),]) +
+  geom_col()
+
+```
+
+Graph showing dollars contributed over time.
+
+
+# Bivariate Analysis
+
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in \the dataset?
+
+The bivariate graphs above begin to explore the relationship between dollars contributed, location (city), and candidate. The average contribution seems to vary across city and political viewpoint. 
+
+
+### Did you observe any interesting relationships between the other features \ (not the main feature(s) of interest)?
+
+It is interesting to see that while the most money was contributed in the final few months of the campaign, there is a sudden drop in total contributions in May of 2016. This was also the month that Donald Trump secured the Republican presidential nomination.
+
+Also, the large number of contributors that were unaffiliated with any specific company was surprising to me. 
+
+
+### What was the strongest relationship you found?
+
+So far we have seen that Hilary Clinton supporters from New York city are very likely to contribute much more on average that contributors elsewhere. 
+
+Also a contributor to Donald Trump is far more likely to contribute $200 or less than a contributor to Hilary Clinton. 
+
+
+
+
+# Multivariate Plots Section
+
+
+```{r}
+
+
+#Create list of candidates representing democratic party:
+democrat <- list (
+  "Clinton, Hillary Rodham",
+  "Lessig, Lawrence",
+  "O'Malley, Martin Joseph",
+  "Webb, James Henry Jr.", 
+  "Sanders, Bernard" 
+)
+
+#Create list of independents:
+other <- 
+  list(
+  "Johnson, Gary",
+  "McMullin, Evan",
+  "Stein, Jill"
+  )
+
+#Create party column with default value
+contributions$party <- "Republican"
+
+#Amend party value for Democrats
+contributions[contributions$cand_nm %in% democrat,"party"] <- "Democrat"
+
+
+#Amend party value for Independents
+contributions[contributions$cand_nm %in% other,"party"] <- "Other"
+
+#Group by city class and party
+group_receipts_by_city_class_by_party <- 
+  group_by(contributions, city_class, party)
+
+#Totals for city class and party
+stats_receipts_by_city_class_by_party <- 
+  summarise(group_receipts_by_city_class_by_party,
+      total_amt = sum(contb_receipt_amt))
+
+ggplot(aes(x=city_class, y=total_amt), 
+       data = stats_receipts_by_city_class_by_party) +
+  geom_col(aes(fill = party)) +
+  scale_fill_manual("Party", values = c("Democrat" = "blue",
+                          "Republican" = "red", "Other" = "green"))
+
+
+```
+
+Here we can see location by total contribution by political party. We can finally confirm that while Democratic candidates raised far more money than Republicans both inside and outside of New York City, Republican candidates were relatively more successful outside of NYC than they were in NYC. 
+
+The one exception to this trend is Staten Island - the one burrough in NYC that seems more or less split between Republican and Democratic total contributions.   
+
+
+
+```{r}
+
+
+# Extract cities with highest contributions from previous data frame:
+top_cities <- stats_receipts_by_city[1:10,1]
+
+
+#Recreate candidate classes for Clinton, Trump, Bernie, Cruz, Other in data set:
+statsreceipts_by_person_by_candidate_and_city$candidate_class <- "Other"
+
+statsreceipts_by_person_by_candidate_and_city[
+  statsreceipts_by_person_by_candidate_and_city$cand_nm == "Sanders, Bernard",
+  "candidate_class"] <- "Sanders, Bernard"
+
+statsreceipts_by_person_by_candidate_and_city[
+  statsreceipts_by_person_by_candidate_and_city$cand_nm 
+  == "Clinton, Hillary Rodham", "candidate_class"] <- "Clinton, Hillary Rodham"
+
+statsreceipts_by_person_by_candidate_and_city[
+  statsreceipts_by_person_by_candidate_and_city$cand_nm == 
+    "Trump, Donald J.", "candidate_class"] <- "Trump, Donald J."
+
+statsreceipts_by_person_by_candidate_and_city[
+  statsreceipts_by_person_by_candidate_and_city$cand_nm == 
+    "Cruz, Rafael Edward 'Ted'", "candidate_class"]<- 
+  "Cruz, Rafael Edward 'Ted'"
+
+
+
+#Simply dataset for unique contributers:
+unique_contributers <- 
+  statsreceipts_by_person_by_candidate_and_city[,c(1,2,4,10)]
+
+
+#Group cities by number of unique contributors for major candidates
+group_unique_contributers_by_city_and_cand <- 
+  group_by(unique_contributers, cityt, candidate_class)
+n_unique_contributers_by_city_and_cand <- 
+  summarise(group_unique_contributers_by_city_and_cand,
+                                                    n = n())
+
+
+#Convert to long format so each row is one city
+long_n_unique_contributers_by_city_and_cand <- 
+  dcast (n_unique_contributers_by_city_and_cand, 
+         cityt ~ candidate_class, value.var = "n")
+
+
+#Change Na values to zero
+long_n_unique_contributers_by_city_and_cand[
+  is.na(long_n_unique_contributers_by_city_and_cand)] <- 0
+
+
+#Merge dataset back with total, average, median contribution totals
+final_n_unique_contributers_by_city_and_cand <- 
+  merge(long_n_unique_contributers_by_city_and_cand,
+  stats_avgs_by_contributor_by_city,by="cityt")
+
+
+
+#Sum contributors across candidates:
+final_n_unique_contributers_by_city_and_cand$total_contributors <- apply (X = final_n_unique_contributers_by_city_and_cand[,c(2:6)],MARGIN = 1, FUN = sum)
+
+#Create percentage of contributors to CLinton campaign
+final_n_unique_contributers_by_city_and_cand$percent_Clinton = 
+  final_n_unique_contributers_by_city_and_cand$`Clinton, Hillary Rodham` / final_n_unique_contributers_by_city_and_cand$total_contributors
+
+#Create percentage of contributors to Trump campaign:
+final_n_unique_contributers_by_city_and_cand$percent_Trump = 
+  final_n_unique_contributers_by_city_and_cand$`Trump, Donald J.` / final_n_unique_contributers_by_city_and_cand$total_contributors
+
+
+#Create percentage of contributors to Sanders campaign:
+final_n_unique_contributers_by_city_and_cand$percent_Sanders = 
+  final_n_unique_contributers_by_city_and_cand$`Sanders, Bernard` / final_n_unique_contributers_by_city_and_cand$total_contributors
+
+ggplot(aes(x=cityt, y=median_contri_per_person), 
+       data = final_n_unique_contributers_by_city_and_cand
+       [final_n_unique_contributers_by_city_and_cand$cityt%in% 
+           top_cities$cityt,]) +
+  geom_col(aes(fill = percent_Clinton)) +
+scale_fill_gradient2(low = "red", high="blue") +
+  theme (axis.text.x = element_text(angle=65))
+
+
+
+
+```
+
+
+
+
+
+
+```{r}
+ggplot(aes(x=cityt, y=median_contri_per_person), 
+       data = final_n_unique_contributers_by_city_and_cand
+       [final_n_unique_contributers_by_city_and_cand
+         $cityt%in%top_cities$cityt,]) +
+  geom_col(aes(fill = percent_Trump)) +
+  scale_fill_gradient2(low = "blue", high="red") +
+  theme (axis.text.x = element_text(angle=65))
+
+
+                  
+```
+
+```{r}
+ggplot(aes(x=cityt, y=median_contri_per_person), 
+       data = final_n_unique_contributers_by_city_and_cand
+       [final_n_unique_contributers_by_city_and_cand$cityt
+         %in% top_cities$cityt,]) +
+  geom_col(aes(fill = percent_Sanders)) +
+scale_fill_gradient2(low = "red", high="blue") +
+theme (axis.text.x = element_text(angle=65))
+
+
+```
+
+In these graphs, we see the correlation between the median total individual contribution and support for individual candidates across the top ten cities in total dollars contributed. Support is measured in unique number of contributors for a candidate versus total unique contributors in a select city. 
+
+
+There is a strong correlation between cities that strongly support Clinton and high average individual contributions. The opposite is true for the Trump campaign, he is more popular in places with low contribution average per person. 
+
+Bernie Sanders was most popular in Brooklyn, Buffalo and Rochester - three cities with relatively low media contributions per person. 
+
+Do these correlations simply confirm the correlation between candidate and average individual contribution? I.e. where there are more Clinton supporters, there will also be higher average contributions?
+
+Does introducing a variable for city add anything more to the analysis? 
+
+
+```{r}
+
+#Group individual contributions by city and candidate:
+group_avgs_by_contributor_by_city_and_cand <- 
+  group_by (statsreceipts_by_person_by_candidate_and_city, 
+            cityt, candidate_class)
+
+stats_avgs_by_contributor_by_city_and_cand <-
+  summarise(group_avgs_by_contributor_by_city_and_cand,
+        mean_contri_per_person = mean (contributor_sum),
+        median_contri_per_person = median(contributor_sum), 
+        total_contr = sum (contributor_sum))
+       
+
+
+#stats_avgs_by_contributor_by_city_and_cand_topcities <- 
+#stats_avgs_by_contributor_by_city_and_cand
+#[stats_avgs_by_contributor_by_city_and_cand$cityt %in% top_cities,]
+
+
+# Add All column to previous dataframe to specify average/median 
+#donation across all candidates:
+stats_avgs_by_contributor_by_city$candidate_class = "All"
+
+
+#Merge datasets to have overall city averages(from previous dataset) and 
+#averages for each candidate:
+stats_avgs_by_contributor_by_city_and_cand <- 
+  rbind(data.frame(stats_avgs_by_contributor_by_city),
+  data.frame(stats_avgs_by_contributor_by_city_and_cand))
+
+         
+#Arrange by city
+stats_avgs_by_contributor_by_city_and_cand<- 
+  arrange(stats_avgs_by_contributor_by_city_and_cand, cityt)    
+
+#Cut for top cities only:
+stats_avgs_by_contributor_by_city_and_cand_top_cities <- 
+  stats_avgs_by_contributor_by_city_and_cand[
+  stats_avgs_by_contributor_by_city_and_cand$cityt%in%top_cities$cityt,]
+
+
+#Adjust candidates to display in graph
+relevant <- c("Trump, Donald J.", "All", "Clinton, Hillary Rodham")
+
+ggplot(aes(x=cityt, y=median_contri_per_person),
+       data = stats_avgs_by_contributor_by_city_and_cand_top_cities[
+  stats_avgs_by_contributor_by_city_and_cand_top_cities$candidate_class 
+  %in% relevant,]) +
+  geom_col(aes(fill = candidate_class), position = "dodge") +
+  scale_color_manual(values = c("red","blue","green")) +
+  theme (axis.text.x = element_text(angle=65))
+                 
+
+```
+
+
+This graph expands on the last and helps address the questions produce from it. Interestingly, it seems that where Clinton is the most popular, people donate more money not just generally, but specifically to her campaign. Where Clinton is least popular - Staten Island and Rochester, she receives far less money on average from those who support her. 
+
+However, for Trump, the places where he is most popular - Staten Island and Rochester - do not correspond to higher average individual contributions. He received the most money on average from Chappauq - a place he is deeply unpopular!
+
+Let's combine the results from the above two graphs into a new graph below to better visualize these observations
+
+
+```{r}
+
+#Parse Clinton averages only from cities:
+clinton_stats_avgs_by_contributor_by_city <- 
+  stats_avgs_by_contributor_by_city_and_cand[
+  stats_avgs_by_contributor_by_city_and_cand$candidate_class
+  =="Clinton, Hillary Rodham",]
+
+#Parse Clinton support/contributor percentage only from cities
+clinton_n_unique_contributers_by_city <- 
+  final_n_unique_contributers_by_city_and_cand[,c(1,2,10,11)]
+
+
+#Merge two dataset, outer merge to keep cities at 0%  where no contributors :
+clinton_final_stats <- 
+  merge(clinton_n_unique_contributers_by_city,
+        clinton_stats_avgs_by_contributor_by_city, 
+        by = "cityt", all.x = TRUE)
+
+#Convert NA values to zero:
+clinton_final_stats[is.na(clinton_final_stats)] <- 0
+
+#Except for candidate name:
+clinton_final_stats$candidate_class <- "Clinton, Hillary Rodham"
+
+
+#Select top cities:
+clinton_final_stats_top_cities <- clinton_final_stats[
+  clinton_final_stats$cityt %in% top_cities$cityt,]
+
+
+ggplot (aes(x=cityt, y=median_contri_per_person), 
+        data = clinton_final_stats_top_cities) +
+  geom_col(aes(fill = percent_Clinton)) +
+scale_fill_gradient2(low = "red", high="blue") +
+  ylab("Median Contribution to Clinton Campaign") +
+  xlab("City") +
+  geom_hline(aes(yintercept = 390)) +
+  geom_text(aes(2,385, label = "Clinton Median All Contri", vjust = -1), 
+            size = 2.5) +
+  theme (axis.text.x = element_text(angle=65))
+
+
+```
+
+
+```{r}
+
+#Repeat for Trump campaign
+
+#Get Trump averages only from top cities:
+trump_stats_avgs_by_contributor_by_city <- 
+  stats_avgs_by_contributor_by_city_and_cand[
+  stats_avgs_by_contributor_by_city_and_cand$candidate_class
+  =="Trump, Donald J.",]
+
+#Get Trump support/contributor percentage only from top cities
+trump_n_unique_contributers_by_city <- 
+  final_n_unique_contributers_by_city_and_cand[,c(1,6,10,12)]
+
+
+
+#Merge two dataset, outer merge to keep cities at 0%  where no contributors :
+trump_final_stats <- merge(trump_n_unique_contributers_by_city,
+          trump_stats_avgs_by_contributor_by_city, by = "cityt", all.x = TRUE)
+
+#Convert NA values to zero:
+trump_final_stats[is.na(trump_final_stats)] <- 0
+
+#Except for candidate name:
+trump_final_stats$candidate_class <- "Trump, Donald J."
+
+#Select top cities:
+trump_final_stats_top_cities <- trump_final_stats[trump_final_stats$cityt 
+                                  %in% top_cities$cityt,]
+
+
+ggplot (aes(x=cityt, y=median_contri_per_person), 
+        data = trump_final_stats_top_cities) +
+  geom_col(aes(fill = percent_Trump)) +
+scale_fill_gradient2(low = "blue", high="red") +
+  ylab("Median Contribution to Trump Campaign") +
+  xlab("City") +
+  geom_hline(aes(yintercept = 60)) +
+  geom_text(aes(2,60, label = "Median Trump Indiv. Contri", vjust = -1), 
+            size = 2.5) +
+  theme (axis.text.x = element_text(angle=65))
+
+
+
+
+```
+
+In the two graphs above, I have replaced overall contributions with numbers for contributions to a specific campaign. The graphs map the relation between a candidate's popularity and medium contribution to their campaign. 
+
+We can see here quite clearly that this relation appears to be reversed for Trump and Clinton's respective campaigns.
+
+Specifically, when we look at the top 10 cities, Trump appears to be more popular in the places where individuals tend to donate less money to his campaign. The opposite is true for Clinton: the cities that contribute more per person to her campaign also greatly support her in preference to any other candidate. 
+
+
+Let's extend the analysis to all cities, to see how well this relationship holds
+
+
+```{r}
+
+
+#Format column names to be the same:
+names(trump_final_stats)[c(2,4)]<- c("n", "Percent_Candidate")
+names(clinton_final_stats)[c(2,4)]<- c("n", "Percent_Candidate")
+
+#Join datasets on rows:
+trump_and_clinton_final_stats <- rbind(data.frame(trump_final_stats), 
+                                       data.frame(clinton_final_stats))
+
+
+ggplot(aes(x=Percent_Candidate, y=median_contri_per_person), 
+       data = trump_and_clinton_final_stats[
+  trump_and_clinton_final_stats$median_contri_per_person>0,]) +
+  geom_jitter(aes(color = candidate_class), alpha = 1/5) +
+  scale_color_manual(values = c("blue", "red")) +
+  geom_hline (yintercept = 60, linetype = "dashed") +
+  geom_hline (yintercept = 390)
+
+  
+
+
+
+
+
+
+```
+
+The graph above depicts every city in the data for which there was a contributor to either to the Trump or Clinton campaign. Cities for which were one or more unique contributor to either campaign are plotted twice - once for each candidate. Since no two candidates can both receive more than 50% of individual contributions, on each side of mid point of the x axis (at 50%), each city can be represented only once. 
+
+
+Although the graph becomes harder to read with so many data points on the graph, we can clearly observe a blue cluster on the left side of the graph below the $390 medium Clinton contribution. At the point where we cross the 50% mark, the blue points spread out with far fewer cities contributing at medians below 390 USD.
+
+Furthermore, although there are some exceptions, contributions to Trump remain fairly consistent even in places where he is more popular. 
+
+
+
+```{r}
+
+
+ggplot(aes(x=Percent_Candidate, y=median_contri_per_person), 
+       data = trump_and_clinton_final_stats[
+  trump_and_clinton_final_stats$median_contri_per_person>0 & 
+    trump_and_clinton_final_stats$candidate_class == "Trump, Donald J.",]) +
+  geom_jitter(aes(color = candidate_class), alpha = 1/5) +
+  scale_color_manual (values = c("red")) +
+  geom_hline (yintercept = 60, linetype = "dashed") 
+
+
+
+```
+
+
+If fact, if we take Trump contributions alone, we can see there is a wider spread of medium contributions on the left side of the graph where he is less popular. 
+
+
+```{r}
+ggplot(aes(x=Percent_Candidate, y=median_contri_per_person), 
+       data = trump_and_clinton_final_stats
+       [trump_and_clinton_final_stats$median_contri_per_person>0 & 
+           trump_and_clinton_final_stats$candidate_class == "Trump, Donald J." &trump_and_clinton_final_stats$Percent_Candidate>.50 ,]) +
+  geom_jitter(aes(color = candidate_class), alpha = 1/5) +
+  scale_color_manual (values = c("red")) +
+  geom_hline (yintercept = 60, linetype = "dashed") +
+  coord_cartesian(ylim = c(1:300))
+```
+
+Lastly, here is the same graph zoomed in across the 50% mark. Notice the cluster in the bottom left of the graph. These points represent cities where Trump is popular but with below average medium contribution. 
+
+
+Of course there is also a long vertical line at the 100% mark where there appear to be the largest number of contributions.
+
+```{r}
+
+qplot (x= Percent_Candidate, data =trump_and_clinton_final_stats, fill 
+       = candidate_class, binwidth = .05) +
+  scale_fill_manual(values = c("blue", "red"))
+
+
+```
+
+Here is a histogram counting each city twice - as the percentage of its total contributors to the Trump and Clinton campaigns. Unlike the last graph, those cities without any contributors to either Trump or Clinton are plotted at the zero x axis.
+
+Evident again is large number of cities contributing exclusively to the Trump campaign. The only place on the graph with a larger count that cities at 100 percent Trump is those with zero percent Clinton.
+
+Although this graph abstracts from contribution receipts, it does indeed show one measure by which the Trump campaign could be said to outperform Clinton's. 
+
+
+```{r}
+
+# Add Bush and Rubio since both is relevamt here
+contributions[contributions$cand_nm
+            == "Bush, Jeb", "candidate_class"] <- "Bush"
+
+contributions[contributions$cand_nm
+            == "Rubio, Marco", "candidate_class"] <- "Rubio"
+
+# Create total row to append to dataframe
+ total_row_group <- group_by(contributions, candidate_class)
+ total_row <- summarise( total_row_group,
+                         total_contr = sum(contb_receipt_amt),
+                         n = n())
+ 
+ total_row$contbr_employer <- "All"
+ 
+
+# Group by employer and candidate class
+group_receipts_by_person_employer_and_cand <- 
+  group_by(contributions, contbr_employer, candidate_class)
+
+
+stats_receipts_by_person_employer_and_cand <- 
+  summarise(group_receipts_by_person_employer_and_cand,
+    total_contr = sum (contb_receipt_amt),
+    n = n())
+
+# Filter for top 15 by contribution dollars
+top15_employer_and_cand <- stats_receipts_by_person_employer_and_cand[
+  stats_receipts_by_person_employer_and_cand$contbr_employer %in% 
+    top_employers$contbr_employer,]
+
+# Add total row create above
+top15_employer_and_cand <- rbind.data.frame(top15_employer_and_cand,total_row)
+
+
+
+library(scales)
+
+ggplot(aes(x = contbr_employer, y = total_contr,fill = candidate_class), 
+       data = top15_employer_and_cand) + 
+    geom_bar(position = "fill",stat = "identity") +
+  coord_flip()+
+      scale_y_continuous(labels = percent_format())+
+  ggtitle ("Top 15 Employers by Contribution Dollars") +
+  ylab ("Percent of Contributions in USD") 
+
+# Source for graph : 
+#https://stackoverflow.com/questions/9563368/create-stacked-barplot-where-each-stack-is-scaled-to-sum-to-100
+
+
+
+  
+
+
+```
+
+Returning to the top 15 employers by contribution totals, we can that Clinton campaign was heavily favored among employees at most of the investment banks and law firms. In proportion to his total contributions, Jeb Bush also has a fairly strong showing here too.
+
+Trump, on the other hand, while barely noticeble among the top companies, does better in unaffilliated workplaces such as homemakers, the self-employed and homemakers.  
+
+
+
+```{r}
+
+
+# Reduce number of candidate class to 3 main names and remainder to "Other"
+contributions$candidate_class <- factor(contributions$candidate_class)
+
+levels(contributions$candidate_class)[
+  levels(contributions$candidate_class)
+  =="Cruz"] <- "Other"
+
+levels(contributions$candidate_class)[
+  levels(contributions$candidate_class)
+  =="Bush"] <- "Other"
+
+levels(contributions$candidate_class)[
+  levels(contributions$candidate_class)
+  =="Rubio"] <- "Other"
+
+levels(contributions$candidate_class)
+levels(contributions$candidate_class)
+
+
+levels(contributions$contbr_employer)[
+  levels(contributions$contbr_employer)
+  =="SELF EMPLOYED"] <- "SELF-EMPLOYED"
+
+
+#Group by occupation, candidate, and contributor UID
+group_receipts_by_person_occupation1 <- group_by(contributions, candidate_class,
+                              contbr_nm, contbr_zip, contbr_occupation)
+
+stats_receipts_by_person_occupation1 <- 
+summarise(group_receipts_by_person_occupation1,
+    total_contr = sum (contb_receipt_amt))
+
+
+#Group again to abtract individual contributors
+group_receipts_by_person_occupation2 <- group_by(
+  stats_receipts_by_person_occupation1, candidate_class,
+  contbr_occupation)
+
+stats_receipts_by_person_occupation2 <- 
+  summarise(group_receipts_by_person_occupation2,
+    total_contr = sum (total_contr),
+    n = n())
+
+# Convert to wide format for easier calculations
+wide_stats_receipts_by_person_occupation2 <-
+  dcast(stats_receipts_by_person_occupation2,
+        contbr_occupation ~ candidate_class, value.var =  "n")
+
+#Set NAs to zero
+wide_stats_receipts_by_person_occupation2[
+  is.na(wide_stats_receipts_by_person_occupation2)] <- 0
+
+
+#Create Totals across candiates
+wide_stats_receipts_by_person_occupation2$Total <- 
+  wide_stats_receipts_by_person_occupation2$Clinton +
+  wide_stats_receipts_by_person_occupation2$Other +
+  wide_stats_receipts_by_person_occupation2$Sanders +
+  wide_stats_receipts_by_person_occupation2$Trump
+
+#Create percentages across candiates to measures support
+wide_stats_receipts_by_person_occupation2$percent_Clinton = 
+  wide_stats_receipts_by_person_occupation2$Clinton / 
+  wide_stats_receipts_by_person_occupation2$Total
+
+wide_stats_receipts_by_person_occupation2$percent_Sanders = 
+  wide_stats_receipts_by_person_occupation2$Sanders / 
+  wide_stats_receipts_by_person_occupation2$Total
+
+wide_stats_receipts_by_person_occupation2$percent_Trump = 
+  wide_stats_receipts_by_person_occupation2$Trump / 
+  wide_stats_receipts_by_person_occupation2$Total
+
+# Parse occupations with at least 15 unique contributors
+most_common_occupations <- wide_stats_receipts_by_person_occupation2[
+  wide_stats_receipts_by_person_occupation2$Total > 14,]
+
+# Sort by number of unique contributors
+most_common_occupations<- most_common_occupations[
+  order(-most_common_occupations$Total),]
+
+# Select top 15 after deleting Null values
+most_common_occupations <- most_common_occupations[1:18,]
+most_common_occupations <- most_common_occupations [c(-2, -5,-13),]
+
+
+# Create list of occupation types to include in graph
+samples = c("LAW ENFORCEMENT",
+"CORRECTION OFFICER",
+"PLUMBER",
+  "SELF-EMPLOYED",
+  	"MECHANIC",
+"CUSTODIAN",
+"AUDIO ENGINEER",
+"ANIMATOR",
+"NOT EMPLOYED",
+	"BARTENDER",
+"SERVER",
+  "WEB DEVELOPER",
+  "VENTURE CAPITALIST",
+  "PUBLIC REALTIONS",
+  "HUMAN RESOURCES MANAGER",
+  "SOFTWARE ENGINEEER",
+  "PRESIDENT, CEO")
+
+
+of_interest_occupations <- wide_stats_receipts_by_person_occupation2 [wide_stats_receipts_by_person_occupation2$contbr_occupation %in% samples,]
+
+#Merge with top occupation
+graph_occupation <- rbind (of_interest_occupations,most_common_occupations)
+
+#Convert back to long format to graph
+graph_occupation<- melt(graph_occupation)
+
+#Delete "helper" values
+graph_occupation <- graph_occupation[graph_occupation$variable !=
+                                       "percent_Trump" &
+          graph_occupation$variable != "percent_Clinton" &
+          graph_occupation$variable != "percent_Sanders" &
+          graph_occupation$variable != "Total",]
+  
+
+ggplot(aes(x = contbr_occupation, y = value ,fill = variable),
+       data = graph_occupation) +
+  geom_bar(position = "fill",stat = "identity") +
+  coord_flip()+
+      scale_y_continuous(labels = percent_format()) +
+      ggtitle ("Common Occupations by Candidate") +
+  xlab("Occupation") +
+  ylab ("Percent Individual Contributors")
+
+
+```
+
+The graph above shows occupation rather than profession and measures populairty in number of unique contributors, rather than dollars contributed. All occupation are composed of at leat 15 unique contributors
+
+We can see farily strong correlation between workplace data and candiate. 
+
+Specifically, Trump performs well among those in law enforcements/corrections professions and among those in manual labor/blue collar professions. Sanders is very popular among those in the hospitality industry (bartenders, servers) and some creative professions. Once these creatve professions cross into the more corporate workplace however, Clinton emerges as the clear favorite. Her campaign was heaily backed by those in higher paying white collar jobs such as public relations,lLaw, and finance. This last fact also explains why she is so dominant in the graph above depiciting top companies by employer contributions.
+
+
+```{r}
+
+#Group Contributions by Month and political party
+group_totals_by_month_by_party <- group_by(
+  contributions, contb_receipt_month,party)
+stat_total_by_month_by_party <- summarise(
+  group_totals_by_month_by_party, 
+      contribution_amt = sum(contb_receipt_amt))
+stat_total_by_month_by_party <- arrange(stat_total_by_month_by_party,
+                                        contb_receipt_month)
+
+ggplot(aes(x=contb_receipt_month,y= contribution_amt), 
+       data = stat_total_by_month_by_party[stat_total_by_month_by_party
+      $contb_receipt_month>as.Date('2014-12-01',format = '%Y-%m-%d'),]) +
+  geom_col(aes(fill=party))
+
+```
+
+
+Changing topics, above is a final graph showing total contributions by month by party.
+
+
+
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+We saw previously that median contribution relates to the candiate contributed to. In the last section, we saw further that medium contribution per city specifically to the Trump and Clinton campaign depends upon that candiate's general popularity in a city.
+
+### Were there any interesting or surprising interactions between features?
+
+The most interesting multivariate relationship is between medium individual contribution and a candidate's popularity by city.
+
+This relationship discussed above is more complex than the more one between median contribution and candidate. Certainly, since for example, Clinton supporters tend to contribute more, where there are more Clinton supporter's, there will also tend to be a higher median contribution. The important point is that the median contribution will tend to be higher than the medium specifically to the Clinton campaign.
+
+The opposite is true for Trump. Where he is most popular, people tend to contribute less to his campaign than people do in places where he is unpopular. 
+
+
+Finally, some of the best evidence of "contributor types" emerges from graphing workplace data next to candidate suported. There is some good evidence that certain types of professions are more likley to support certain candiates than others. 
+
+------
+
+# Final Plots and Summary
+
+
+### Plot One
+
+```{r, PLot_One}
+
+
+#Change limit for scientific notaion on axis
+options(scipen=5)
+
+
+plot2 <- ggplot(aes(x=candidate_class, y = total_contrib/1000), 
+                data = stats_candidate_by_contrb_type) +
+  geom_col(aes(fill = type)) +
+  ylab("USD (in thousands)") +
+  xlab ("Candidate") +
+  ggtitle("
+          Total Contribution by Type to 2016 Presidential Campaign
+          in New York State")
+
+plot1 <- ggplot(aes(x=candidate_class, y = n), 
+                data = stats_candidate_by_contrb_type) +
+  geom_col(aes(fill = type)) +
+  ylab("Number of Indiv. Contributers")+
+  xlab("Candidate") +
+  ggtitle("Number of Contributers by Types to 2016 
+Presidential Campaign in New York State")
+
+
+grid.arrange(plot1, plot2)
+
+```
+
+### Description One
+
+The graphs above depict small donors ($200 or less) as a percent of total donors to each campaign, and small donor contributions as a percent of the total dollars contributed. 
+
+During the election, there was a lot of discussion about how each candidate's campaign was funded, and especially which candidates relied on more on small-donors as a sign of grassroots strength.
+
+When we graph contributions from New York State, however, it is evident that small contributors were insignificant overall, and not close to being a primary source of funding for any candidate.
+
+Although the majority of contributors to Trump and Sanders are small-donors, once converted into dollars, these contributions are dwarfed by the minority group of larger contributors. In fact, one of the reasons the Clinton campaign was so much better funded than these campaigns is because she relied on small contributors to a much lesser extent. 
+
+
+### Plot Two
+```{r, Plot_Two}
+
+qplot (x= Percent_Candidate, data =trump_and_clinton_final_stats, 
+       fill = candidate_class, binwidth = .05) +
+  scale_fill_manual("Candidate", values = c("blue", "red"))+
+  ylab("Count, in Number of Cities")+
+  xlab("Number of Contributors to Trump or Clinton/Total Contributors") +
+  ggtitle("New York State Cities Contribution Rate")
+  
+
+```
+
+### Description Two
+
+There are two tentative conclusions that can be drawn/observed in the graph above.
+
+The first is how geographically divisive the election was across New York State. The largest categories are those where a candidate has either 100% of the contributions or 0%. Although contributors to Trump and Clinton together made up more than 73% of total contributors, in a majority of cities either of these top candidates received either 100% or 0% of total contributions. 
+
+The second conclusion is that despite how successfully Clinton out-funded Trump in total dollars in every measurable way, there are vast swaths of New York State where she has no contributors and where Trump is very popular. Although Trump only had 38% the total number of contributors than Clinton, a far larger number of cities contributed at a rate of 100% to Trump than Clinton, and an even larger number of cities contributed nothing to Clinton than they did Trump. 
+
+
+### Plot Three
+```{r, Plot_Three}
+
+plot3 <- ggplot (aes(x=cityt, y=median_contri_per_person), 
+                 data = trump_final_stats_top_cities) +
+  geom_col(aes(fill = percent_Trump)) +
+scale_fill_gradient2(low = "blue", high="red") +
+  ggtitle("Median Contribution by City to Trump Campaign") +
+  ylab("USD") +
+  xlab("City") +
+  geom_hline(aes(yintercept = 60)) +
+  geom_text(aes(2,60, label = "Median Trump Indiv. Contri", vjust = -1), 
+            size = 2.5) +
+  theme (axis.text.x = element_text(angle=65, size = 7))
+
+plot4 <- ggplot (aes(x=cityt, y=median_contri_per_person), 
+                 data = clinton_final_stats_top_cities) +
+  geom_col(aes(fill = percent_Clinton)) +
+scale_fill_gradient2(low = "red", high="blue") +
+  ggtitle ("Median Contribution by City to Clinton Campaign") +
+  ylab("USD") +
+  xlab("City") +
+  geom_hline(aes(yintercept = 390)) +
+  geom_text(aes(2,385, label = "Median Clinton Indiv. Contri", 
+                vjust = -1), size = 2.5) +
+  theme (axis.text.x = element_text(angle=65, size = 7))
+
+grid.arrange(plot3, plot4)
+
+
+```
+
+### Description Three
+
+The graph above depicts most clearly the central multivariate relationship of this analysis. 
+
+The relationship between Median Contribution and Popularity moves in different directions for the Clinton and Trump campaign. See the reflection section below for some further insight about what could explain this observation.
+
+------
+
+# Reflection
+
+The largest struggle in this analysis was trying to find relationships between variables when the dataset is largely defined by a few very dominant categories/values. Specifically, New York City and Hilary Clinton were such an large source of contribution dollars, that any analysis focusing on total dollars alone would be largely determined by these values. It is primarily in response to this challenge, that I switched my analysis to looking at average contribution sizes.
+
+This presented another difficulty: trying to find a unique-identifier by which to group the data. Although each contribution is given its own identification number, it seemed invalid to weigh equally one single 5 dollar contribution from one person with multiple 5 dollar contribution from someone else who contributed many times. There was no UID from a contributor in the dataset, so I had to devise my own (admittedly imperfect) solution based on name and zip code.
+
+The results of my analysis also contain some suggestions at further datasets that could be used to support and deepen the conclusions drawn within:
+
+(i) An Individual's Total contribution may be an indication of that individual's wealth and income. In this case, a campaign with a lower median individual contribution may signify a candidate's broader support among the middle or working class. In graph three above, we see these such contribution rates grouped into cities and varying with the popularity of a candidate. If Trump, for example, receives lower median contributions where he is most popular, can we conclude that Trump is more popular in cities with lower average income? Likewise, if Clinton is more popular where she gets the most money, then can this be explained precisely because Clinton is popular in wealthier communities? 
+Introducing data on the median income for each city already included in the dataset, and plotting such median incomes in relation to a candidate's popularity may reveal deeper and more insightful relations than those here. 
+
+(ii) Another area unexplored in the analysis above is a city's population size. In graph two, we saw how popular Trump is in many NYS cities despite receiving contributions from only 20% of the people who donated. The only way his campaign can be popular in so many cities with so few total contributors, is if he was popular in those cities with fewer total contributors and thus smaller populations. My analysis appears to support and could be further supplemented by the urban/suburban/rural effect on political support.  
+
+
+
+
